@@ -32,20 +32,23 @@ ADMIN_IDS = _ints("ADMIN_IDS") or {MENTOR_ID}
 CHANNEL_ID = _int("CHANNEL_ID")            # основной канал
 GROUP_GENERAL_ID = _int("GROUP_GENERAL_ID")  # общий чат (супергруппа-форум)
 GROUP_WORK_ID = _int("GROUP_WORK_ID")      # чат работы (супергруппа)
-# топики общего чата, которые собираем: «Важное» + «Полезные материалы»
-GENERAL_TOPIC_IDS = _ints("GENERAL_TOPIC_IDS")
+# топики, которые НЕ собираем (напр. «Записи собеседований» — они живут в mlsobes)
+EXCLUDE_TOPIC_IDS = _ints("EXCLUDE_TOPIC_IDS")
 
 DISCOVER = os.getenv("DISCOVER", "").strip() not in ("", "0", "false", "False")
 MAX_VOICE_BYTES = int(os.getenv("MAX_VOICE_BYTES", str(20 * 1024 * 1024)))  # качаем голос до 20МБ
 
 
 def should_collect(chat_id: int, thread_id: int | None) -> bool:
-    """Собираем ли это сообщение (по вайтлисту источников)."""
+    """Собираем ли это сообщение. Канал + ВСЕ топики обеих супергрупп
+    (кроме EXCLUDE_TOPIC_IDS). Режим индексации (материалы/Q&A) по топику решает mlagent."""
     if CHANNEL_ID is not None and chat_id == CHANNEL_ID:
         return True
-    if GROUP_WORK_ID is not None and chat_id == GROUP_WORK_ID:
-        return True  # весь чат работы (переписки + топик «Важное» внутри по thread_id)
-    if GROUP_GENERAL_ID is not None and chat_id == GROUP_GENERAL_ID:
-        # из общего чата — ТОЛЬКО заданные топики (не вся болтовня)
-        return bool(GENERAL_TOPIC_IDS) and thread_id in GENERAL_TOPIC_IDS
+    if chat_id in (GROUP_GENERAL_ID, GROUP_WORK_ID) and chat_id is not None:
+        return thread_id not in EXCLUDE_TOPIC_IDS
     return False
+
+
+def is_channel(chat_id: int) -> bool:
+    """Аудио транскрибируем ТОЛЬКО из основного канала — только там качаем голос."""
+    return CHANNEL_ID is not None and chat_id == CHANNEL_ID

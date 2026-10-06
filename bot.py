@@ -37,8 +37,10 @@ async def _store(m: Message, bot: Bot, *, edited: bool) -> None:
         return
 
     text = m.text or m.caption
+    # аудио/видео/файлы везде НЕ берём — только текст; исключение: основной канал,
+    # где голосовые скачиваем для транскрибации (ASR в mlagent)
     voice = m.voice or m.audio
-    has_voice = voice is not None
+    has_voice = bool(voice) and cfg.is_channel(chat_id)
     voice_ogg = None
     if has_voice and (not voice.file_size or voice.file_size <= cfg.MAX_VOICE_BYTES):
         try:
@@ -47,7 +49,7 @@ async def _store(m: Message, bot: Bot, *, edited: bool) -> None:
         except Exception as e:  # noqa: BLE001
             log.warning("не скачал голосовое: %s", e)
     if not text and not has_voice:
-        return  # фото/стикер/служебное без текста — пропускаем
+        return  # без текста (и не канал-голос) — пропускаем (фото/видео/файл/стикер)
 
     reply_to = None
     r = m.reply_to_message
