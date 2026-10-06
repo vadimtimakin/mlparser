@@ -114,9 +114,9 @@ async def main() -> None:
     bot = Bot(cfg.TOKEN)
     dp = Dispatcher()
     dp.include_router(router)
-    log.info("mlparser запущен. DISCOVER=%s | channel=%s general=%s(topics=%s) work=%s",
-             cfg.DISCOVER, cfg.CHANNEL_ID, cfg.GROUP_GENERAL_ID,
-             sorted(cfg.GENERAL_TOPIC_IDS), cfg.GROUP_WORK_ID)
+    log.info("mlparser запущен. DISCOVER=%s | channel=%s general=%s work=%s | exclude_topics=%s",
+             cfg.DISCOVER, cfg.CHANNEL_ID, cfg.GROUP_GENERAL_ID, cfg.GROUP_WORK_ID,
+             sorted(cfg.EXCLUDE_TOPIC_IDS))
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
