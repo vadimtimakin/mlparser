@@ -27,12 +27,58 @@ log = logging.getLogger("mlparser")
 router = Router()
 
 
+def _extract_media(m: Message):
+    """(media_type, file_id, file_unique_id, file_name). Фото — самый крупный размер."""
+    if m.photo:
+        p = m.photo[-1]
+        return "photo", p.file_id, p.file_unique_id, None
+    for attr in ("video", "document", "audio", "voice", "animation", "video_note", "sticker"):
+        obj = getattr(m, attr, None)
+        if obj is not None:
+            return attr, obj.file_id, obj.file_unique_id, getattr(obj, "file_name", None)
+    return None, None, None, None
+
+
+async def _archive(m: Message, *, edited: bool) -> None:
+    """Append-only сырой бэкап любого сообщения (до фильтра, все типы, с file_id). Delete-proof."""
+    u = m.from_user
+    media_type, file_id, file_unique_id, file_name = _extract_media(m)
+    reply_to = None
+    r = m.reply_to_message
+    if r is not None and not getattr(r, "forum_topic_created", None):
+        reply_to = r.message_id
+    edited_at = None
+    if edited and m.edit_date:
+        edited_at = datetime.fromtimestamp(m.edit_date, tz=timezone.utc)
+    try:
+        raw = m.model_dump(mode="json")
+    except Exception:  # noqa: BLE001
+        raw = None
+    try:
+        await asyncio.to_thread(
+            db.archive_message,
+            source=("channel" if m.chat.type == "channel" else "group"),
+            update_kind=("edited" if edited else "new"),
+            chat_id=m.chat.id, chat_type=m.chat.type, chat_title=m.chat.title,
+            thread_id=m.message_thread_id, sender_id=(u.id if u else None),
+            sender_username=((u.username if u else None) or m.chat.username),
+            sender_name=(" ".join(p for p in ((u.first_name if u else None),
+                                              (u.last_name if u else None)) if p) or None),
+            message_id=m.message_id, reply_to=reply_to, text=(m.text or m.caption),
+            media_type=media_type, file_id=file_id, file_unique_id=file_unique_id,
+            file_name=file_name, sent_at=m.date, edited_at=edited_at, raw_json=raw,
+        )
+    except Exception as e:  # noqa: BLE001 — архив не должен ронять бота
+        log.warning("ошибка записи в архив: %s", e)
+
+
 async def _store(m: Message, bot: Bot, *, edited: bool) -> None:
     chat_id = m.chat.id
     thread_id = m.message_thread_id
     if cfg.DISCOVER:
         log.info("seen chat_id=%s thread_id=%s type=%s title=%r",
                  chat_id, thread_id, m.chat.type, m.chat.title)
+    await _archive(m, edited=edited)  # сырой бэкап ДО фильтра — ловим всё, что видит бот
     if not cfg.should_collect(chat_id, thread_id):
         return
 
